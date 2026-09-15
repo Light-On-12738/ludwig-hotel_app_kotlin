@@ -1,9 +1,14 @@
 package com.example.ludwighotel
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,15 +20,21 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class Habitacion(
-    val nombre: String,
+    val id_habitacion: Int,
+    val nombre_habitacion: String,
     val descripcion: String,
-    val precio: String,
-    val servicios: List<String>
+    val precio_noche: String,
+    val capacidad_huespedes: Int,
+    val imagen_habitacion: String? = null
 )
 
 class MainActivity : ComponentActivity() {
@@ -59,94 +70,212 @@ fun LudwigHotelApp() {
     )
 
     var selectedTab by remember { mutableStateOf(0) }
+    var isMenuOpen by remember { mutableStateOf(false) } // NUEVO: estado del menú (abierto/cerrado)
+    val context = LocalContext.current
 
     MaterialTheme {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = Color(0xFFF4F4F4)
-        ) {
-            LazyColumn(
+        // NUEVO: Box en vez de Surface directo, para poder superponer el menú encima del contenido
+        Box(modifier = Modifier.fillMaxSize()) {
+
+            Surface(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(20.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp)
+                color = Color(0xFFF4F4F4)
             ) {
-                item { Header() }
-                item { SearchBar() }
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    item {
+                        // NUEVO: le pasamos qué hacer cuando toquen el ícono ☰
+                        Header(onMenuClick = { isMenuOpen = true })
+                    }
+                    item { SearchBar() }
 
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        listOf("Habitaciones", "Catálogo", "Reservas")
-                            .forEachIndexed { index, title ->
-                                TextButton(
-                                    onClick = { selectedTab = index }
-                                ) {
-                                    Column(
-                                        horizontalAlignment = Alignment.CenterHorizontally
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            listOf("Habitaciones", "Catálogo", "Reservas")
+                                .forEachIndexed { index, title ->
+                                    TextButton(
+                                        onClick = { selectedTab = index }
                                     ) {
-                                        Text(
-                                            text = title,
-                                            color = if (selectedTab == index)
-                                                Color(0xFFFFA000)
-                                            else
-                                                Color.DarkGray,
-                                            fontSize = 17.sp,
-                                            fontWeight = if (selectedTab == index)
-                                                FontWeight.Bold
-                                            else
-                                                FontWeight.Normal
-                                        )
-
-                                        if (selectedTab == index) {
-                                            Spacer(Modifier.height(4.dp))
-                                            Box(
-                                                modifier = Modifier
-                                                    .width(42.dp)
-                                                    .height(3.dp)
-                                                    .background(
-                                                        Color(0xFFFFA000),
-                                                        RoundedCornerShape(3.dp)
-                                                    )
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Text(
+                                                text = title,
+                                                color = if (selectedTab == index)
+                                                    Color(0xFFFFA000)
+                                                else
+                                                    Color.DarkGray,
+                                                fontSize = 17.sp,
+                                                fontWeight = if (selectedTab == index)
+                                                    FontWeight.Bold
+                                                else
+                                                    FontWeight.Normal
                                             )
+
+                                            if (selectedTab == index) {
+                                                Spacer(Modifier.height(4.dp))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(42.dp)
+                                                        .height(3.dp)
+                                                        .background(
+                                                            Color(0xFFFFA000),
+                                                            RoundedCornerShape(3.dp)
+                                                        )
+                                                )
+                                            }
                                         }
                                     }
                                 }
-                            }
+                        }
                     }
-                }
 
-                if (selectedTab == 0) {
-                    items(habitaciones) { habitacion ->
-                        HabitacionCard(habitacion)
-                    }
-                } else {
-                    item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(Color.White),
-                            shape = RoundedCornerShape(20.dp)
-                        ) {
-                            Text(
-                                text = if (selectedTab == 1)
-                                    "Catálogo de servicios"
-                                else
-                                    "Mis reservas",
-                                modifier = Modifier.padding(24.dp),
-                                fontSize = 24.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                    if (selectedTab == 0) {
+                        items(habitaciones) { habitacion ->
+                            HabitacionCard(habitacion)
+                        }
+                    } else {
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(Color.White),
+                                shape = RoundedCornerShape(20.dp)
+                            ) {
+                                Text(
+                                    text = if (selectedTab == 1)
+                                        "Catálogo de servicios"
+                                    else
+                                        "Mis reservas",
+                                    modifier = Modifier.padding(24.dp),
+                                    fontSize = 24.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }
+            }
+
+            // NUEVO: fondo oscuro (scrim) que aparece detrás del menú.
+            // Tocarlo cierra el menú, igual que en cualquier drawer.
+            AnimatedVisibility(visible = isMenuOpen) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.4f))
+                        .clickable { isMenuOpen = false }
+                )
+            }
+
+            // NUEVO: el menú en sí, animado entrando/saliendo desde la izquierda
+            AnimatedVisibility(
+                visible = isMenuOpen,
+                enter = slideInHorizontally(initialOffsetX = { -it }),
+                exit = slideOutHorizontally(targetOffsetX = { -it })
+            ) {
+                HamburgerMenu(
+                    onSelectTab = { tab ->
+                        selectedTab = tab
+                        isMenuOpen = false
+                    },
+                    onLogout = {
+                        isMenuOpen = false
+                        Toast.makeText(context, "Sesión cerrada", Toast.LENGTH_SHORT).show()
+                        // Aquí conectas tu lógica real de logout:
+                        // borrar token guardado, navegar a la pantalla de login, etc.
+                    }
+                )
             }
         }
     }
 }
 
+// NUEVO: el menú lateral con el diseño de tu mockup (avatar, opciones, cerrar sesión)
 @Composable
-fun Header() {
+fun HamburgerMenu(
+    onSelectTab: (Int) -> Unit,
+    onLogout: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxHeight()
+            .width(260.dp)
+            .background(Color.White)
+            .padding(20.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(45.dp)
+                    .background(Color(0xFFFFE0B2), RoundedCornerShape(50.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = null,
+                    tint = Color(0xFFFFA000)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = "Ludwig Martínez",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
+        }
+
+        Spacer(Modifier.height(20.dp))
+        Divider()
+        Spacer(Modifier.height(20.dp))
+
+        MenuOption(Icons.Default.Home, "Inicio") { onSelectTab(0) }
+        Spacer(Modifier.height(10.dp))
+        MenuOption(Icons.Default.GridView, "Catálogo") { onSelectTab(1) }
+        Spacer(Modifier.height(10.dp))
+        MenuOption(Icons.Default.CalendarToday, "Reserva") { onSelectTab(2) }
+
+        Spacer(Modifier.weight(1f)) // empuja "Cerrar sesión" hasta el fondo
+
+        Divider()
+        Spacer(Modifier.height(16.dp))
+        MenuOption(
+            icon = Icons.Default.Logout,
+            label = "Cerrar sesión",
+            tint = Color(0xFFE53935),
+            onClick = onLogout
+        )
+    }
+}
+
+@Composable
+fun MenuOption(
+    icon: ImageVector,
+    label: String,
+    tint: Color = Color(0xFFFFA000),
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFF7F7F7), RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 14.dp, horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(label, color = tint, fontWeight = FontWeight.Medium)
+    }
+}
+
+@Composable
+fun Header(onMenuClick: () -> Unit) { // NUEVO: parámetro para conectar el clic
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -156,7 +285,7 @@ fun Header() {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(
-                onClick = {},
+                onClick = onMenuClick, // antes: onClick = {}
                 modifier = Modifier
                     .size(55.dp)
                     .background(
