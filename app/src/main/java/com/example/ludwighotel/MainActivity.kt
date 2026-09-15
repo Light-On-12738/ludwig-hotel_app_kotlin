@@ -19,6 +19,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+
 data class Habitacion(
     val nombre: String,
     val descripcion: String,
@@ -30,7 +34,33 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            LudwigHotelApp()
+            val navController = rememberNavController()
+
+            NavHost(
+                navController = navController,
+                startDestination = "login"
+            ) {
+                composable("login") {
+                    LoginScreen(
+                        navController = navController,
+                        onLoginSuccess = {
+                            navController.navigate("hotel") {
+                                popUpTo("login") {
+                                    inclusive = true
+                                }
+                            }
+                        }
+                    )
+                }
+
+                composable("register") {
+                    RegisterScreen(navController)
+                }
+
+                composable("hotel") {
+                    LudwigHotelApp()
+                }
+            }
         }
     }
 }
