@@ -26,6 +26,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.serialization.Serializable
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+
 
 @Serializable
 data class Habitacion(
@@ -41,7 +45,33 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            LudwigHotelApp()
+            val navController = rememberNavController()
+
+            NavHost(
+                navController = navController,
+                startDestination = "login"
+            ) {
+                composable("login") {
+                    LoginScreen(
+                        navController = navController,
+                        onLoginSuccess = {
+                            navController.navigate("hotel") {
+                                popUpTo("login") {
+                                    inclusive = true
+                                }
+                            }
+                        }
+                    )
+                }
+
+                composable("register") {
+                    RegisterScreen(navController)
+                }
+
+                composable("hotel") {
+                    LudwigHotelApp()
+                }
+            }
         }
     }
 }
