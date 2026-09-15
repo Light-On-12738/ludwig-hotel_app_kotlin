@@ -1,6 +1,7 @@
-package com.tuapp.data.remote
+package com.example.ludwighotel
 
 import io.github.jan.supabase.createSupabaseClient
+import io.github.jan.supabase.plugins.install
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.auth.Auth
 import io.github.jan.supabase.storage.Storage

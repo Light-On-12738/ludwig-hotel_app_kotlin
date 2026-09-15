@@ -15,3 +15,17 @@ Pasos:
 6. Presionar Run (▶).
 
 La aplicación utiliza Kotlin + Jetpack Compose.
+
+BASE DE DATOS
+
+La conexión a Supabase está lista en:
+app/src/main/java/com/example/ludwighotel/SupabaseClient.kt
+
+El proyecto incluye Postgres, Auth, Storage, Realtime, Ktor y serialización.
+Usar el cliente desde Kotlin así:
+
+val supabase = SupabaseClientProvider.client
+
+Para los modelos de base de datos, usar @Serializable.
+Antes de consultar, habilitar Data API para las tablas y crear políticas RLS
+en el panel de Supabase. Nunca usar una clave service_role en Android.
