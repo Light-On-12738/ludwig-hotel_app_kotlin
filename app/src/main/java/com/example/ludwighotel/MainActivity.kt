@@ -25,21 +25,48 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.serialization.Serializable
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-
+import io.github.jan.supabase.postgrest.from
+import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 
 @Serializable
 data class Habitacion(
-    val id_habitacion: Int,
+    val id_habitacion: String,
     val nombre_habitacion: String,
     val descripcion: String,
-    val precio_noche: String,
+    val precio_noche: Double,
     val capacidad_huespedes: Int,
-    val imagen_habitacion: String? = null
+    val imagen_habitacion: String? = null,
+    val subtitulo: String? = null
 )
+
+class HabitacionRepository {
+    suspend fun obtenerHabitaciones(): List<Habitacion> {
+        return SupabaseClientProvider.client
+            .from("habitaciones")
+            .select()
+            .decodeList<Habitacion>()
+    }
+}
+
+class HotelViewModel : ViewModel() {
+    private val repo = HabitacionRepository()
+
+    var habitaciones by mutableStateOf<List<Habitacion>>(emptyList())
+        private set
+
+    init {
+        viewModelScope.launch {
+            habitaciones = repo.obtenerHabitaciones()
+        }
+    }
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,34 +104,14 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun LudwigHotelApp() {
-    val habitaciones = listOf(
-        Habitacion(
-            "Suite Presidencial",
-            "Habitación de lujo • 2 camas",
-            "$450",
-            listOf("Wi-Fi", "Desayuno")
-        ),
-        Habitacion(
-            "Habitación Deluxe",
-            "Vista al mar • 1 cama",
-            "$320",
-            listOf("A/C", "TV 4K")
-        ),
-        Habitacion(
-            "Habitación Familiar",
-            "Espaciosa • 3 camas",
-            "$280",
-            listOf("Wi-Fi", "TV 4K")
-        )
-    )
+fun LudwigHotelApp(viewModel: HotelViewModel = viewModel()) {
+    val habitaciones = viewModel.habitaciones
 
     var selectedTab by remember { mutableStateOf(0) }
-    var isMenuOpen by remember { mutableStateOf(false) } // NUEVO: estado del menú (abierto/cerrado)
+    var isMenuOpen by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     MaterialTheme {
-        // NUEVO: Box en vez de Surface directo, para poder superponer el menú encima del contenido
         Box(modifier = Modifier.fillMaxSize()) {
 
             Surface(
@@ -117,7 +124,6 @@ fun LudwigHotelApp() {
                     verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
                     item {
-                        // NUEVO: le pasamos qué hacer cuando toquen el ícono ☰
                         Header(onMenuClick = { isMenuOpen = true })
                     }
                     item { SearchBar() }
@@ -192,8 +198,6 @@ fun LudwigHotelApp() {
                 }
             }
 
-            // NUEVO: fondo oscuro (scrim) que aparece detrás del menú.
-            // Tocarlo cierra el menú, igual que en cualquier drawer.
             AnimatedVisibility(visible = isMenuOpen) {
                 Box(
                     modifier = Modifier
@@ -203,7 +207,6 @@ fun LudwigHotelApp() {
                 )
             }
 
-            // NUEVO: el menú en sí, animado entrando/saliendo desde la izquierda
             AnimatedVisibility(
                 visible = isMenuOpen,
                 enter = slideInHorizontally(initialOffsetX = { -it }),
@@ -217,8 +220,6 @@ fun LudwigHotelApp() {
                     onLogout = {
                         isMenuOpen = false
                         Toast.makeText(context, "Sesión cerrada", Toast.LENGTH_SHORT).show()
-                        // Aquí conectas tu lógica real de logout:
-                        // borrar token guardado, navegar a la pantalla de login, etc.
                     }
                 )
             }
@@ -226,7 +227,6 @@ fun LudwigHotelApp() {
     }
 }
 
-// NUEVO: el menú lateral con el diseño de tu mockup (avatar, opciones, cerrar sesión)
 @Composable
 fun HamburgerMenu(
     onSelectTab: (Int) -> Unit,
@@ -270,7 +270,7 @@ fun HamburgerMenu(
         Spacer(Modifier.height(10.dp))
         MenuOption(Icons.Default.CalendarToday, "Reserva") { onSelectTab(2) }
 
-        Spacer(Modifier.weight(1f)) // empuja "Cerrar sesión" hasta el fondo
+        Spacer(Modifier.weight(1f))
 
         Divider()
         Spacer(Modifier.height(16.dp))
@@ -305,7 +305,7 @@ fun MenuOption(
 }
 
 @Composable
-fun Header(onMenuClick: () -> Unit) { // NUEVO: parámetro para conectar el clic
+fun Header(onMenuClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -315,7 +315,7 @@ fun Header(onMenuClick: () -> Unit) { // NUEVO: parámetro para conectar el clic
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(
-                onClick = onMenuClick, // antes: onClick = {}
+                onClick = onMenuClick,
                 modifier = Modifier
                     .size(55.dp)
                     .background(
@@ -413,7 +413,7 @@ fun HabitacionCard(habitacion: Habitacion) {
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        text = habitacion.nombre,
+                        text = habitacion.nombre_habitacion,
                         fontSize = 21.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF263238)
@@ -422,14 +422,14 @@ fun HabitacionCard(habitacion: Habitacion) {
                     Spacer(Modifier.height(7.dp))
 
                     Text(
-                        text = habitacion.descripcion,
+                        text = habitacion.subtitulo ?: "",
                         color = Color.Gray
                     )
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        text = habitacion.precio,
+                        text = "$${"%.0f".format(habitacion.precio_noche)}",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFFFA000)
@@ -444,46 +444,24 @@ fun HabitacionCard(habitacion: Habitacion) {
 
             Spacer(Modifier.height(15.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                habitacion.servicios.forEach { servicio ->
-                    ServicioChip(servicio)
-                }
+            Row(
+                modifier = Modifier
+                    .background(Color(0xFFF3F3F3), RoundedCornerShape(12.dp))
+                    .padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = "Capacidad",
+                    modifier = Modifier.size(19.dp),
+                    tint = Color.DarkGray
+                )
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    text = "${habitacion.capacidad_huespedes} huéspedes",
+                    color = Color.DarkGray
+                )
             }
         }
-    }
-}
-
-@Composable
-fun ServicioChip(servicio: String) {
-    val icon = when (servicio) {
-        "Wi-Fi" -> Icons.Default.Wifi
-        "Desayuno" -> Icons.Default.FreeBreakfast
-        "A/C" -> Icons.Default.AcUnit
-        "TV 4K" -> Icons.Default.Tv
-        else -> Icons.Default.Check
-    }
-
-    Row(
-        modifier = Modifier
-            .background(
-                Color(0xFFF3F3F3),
-                RoundedCornerShape(12.dp)
-            )
-            .padding(10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = servicio,
-            modifier = Modifier.size(19.dp),
-            tint = Color.DarkGray
-        )
-
-        Spacer(Modifier.width(5.dp))
-
-        Text(
-            text = servicio,
-            color = Color.DarkGray
-        )
     }
 }
