@@ -38,6 +38,10 @@ import androidx.navigation.compose.rememberNavController
 import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import androidx.navigation.NavHostController
+import coil.compose.AsyncImage
 
 @Serializable
 data class Habitacion(
@@ -100,7 +104,18 @@ class MainActivity : ComponentActivity() {
                 }
 
                 composable("hotel") {
-                    LudwigHotelApp()
+                    LudwigHotelApp(navController = navController)
+                }
+                
+                composable(
+                    route = "habitacion/{habitacionId}",
+                    arguments = listOf(navArgument("habitacionId") { type = NavType.StringType })
+                ) { backStackEntry ->
+                    val habitacionId = backStackEntry.arguments?.getString("habitacionId") ?: ""
+                    HabitacionDetalleScreen(
+                        habitacionId = habitacionId,
+                        onBack = { navController.popBackStack() }
+                    )
                 }
             }
         }
@@ -108,12 +123,20 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun LudwigHotelApp(viewModel: HotelViewModel = viewModel()) {
+fun LudwigHotelApp(
+    navController: NavHostController,
+    viewModel: HotelViewModel = viewModel()
+) {
     val habitaciones = viewModel.habitaciones
 
     var selectedTab by remember { mutableStateOf(0) }
     var isMenuOpen by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
     val context = LocalContext.current
+
+    val habitacionesFiltradas = remember(habitaciones, searchQuery) {
+        habitaciones.filter { it.coincideCon(searchQuery) }
+    }
 
     MaterialTheme {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -130,11 +153,50 @@ fun LudwigHotelApp(viewModel: HotelViewModel = viewModel()) {
                     item {
                         Header(onMenuClick = { isMenuOpen = true })
                     }
-                    item { SearchBar() }
+                    item {
+                        SearchBar(
+                            query = searchQuery,
+                            onQueryChange = { searchQuery = it }
+                        )
+                    }
 
                     if (selectedTab == 0) {
-                        items(habitaciones) { habitacion ->
-                            HabitacionCard(habitacion)
+                        if (habitacionesFiltradas.isEmpty() && searchQuery.isNotBlank()) {
+                            item {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(Color.White),
+                                    shape = RoundedCornerShape(20.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(24.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.SearchOff,
+                                            contentDescription = null,
+                                            tint = Color.Gray,
+                                            modifier = Modifier.size(40.dp)
+                                        )
+                                        Spacer(Modifier.height(10.dp))
+                                        Text(
+                                            text = "No se encontraron habitaciones para \"$searchQuery\"",
+                                            color = Color.Gray
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            items(habitacionesFiltradas) { habitacion ->
+                                HabitacionCard(
+                                    habitacion = habitacion,
+                                    onClick = {
+                                        navController.navigate("habitacion/${habitacion.id_habitacion}")
+                                    }
+                                )
+                            }
                         }
                     } else {
                         item {
@@ -309,12 +371,13 @@ fun Header(onMenuClick: () -> Unit) {
 }
 
 @Composable
-fun SearchBar() {
-    var text by remember { mutableStateOf("") }
-
+fun SearchBar(
+    query: String,
+    onQueryChange: (String) -> Unit
+) {
     OutlinedTextField(
-        value = text,
-        onValueChange = { text = it },
+        value = query,
+        onValueChange = onQueryChange,
         modifier = Modifier
             .fillMaxWidth()
             .height(65.dp),
@@ -327,6 +390,16 @@ fun SearchBar() {
                 contentDescription = "Buscar"
             )
         },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Limpiar búsqueda"
+                    )
+                }
+            }
+        },
         shape = RoundedCornerShape(18.dp),
         colors = OutlinedTextFieldDefaults.colors(
             unfocusedContainerColor = Color.White,
@@ -338,11 +411,21 @@ fun SearchBar() {
     )
 }
 
-/**
- * Resuelve el nombre guardado en la base de datos (columna imagen_habitacion,
- * SIN extensión, ej. "habitacion_deluxe") al ID interno del recurso drawable
- * empaquetado en la app. Si no encuentra nada, retorna 0.
- */
+
+private fun normalizarTexto(texto: String): String {
+    val sinAcentos = java.text.Normalizer.normalize(texto, java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "")
+    return sinAcentos.lowercase().trim()
+}
+
+private fun Habitacion.coincideCon(query: String): Boolean {
+    if (query.isBlank()) return true
+    val queryNormalizada = normalizarTexto(query)
+    return normalizarTexto(nombre_habitacion).contains(queryNormalizada) ||
+        normalizarTexto(descripcion).contains(queryNormalizada) ||
+        normalizarTexto(subtitulo ?: "").contains(queryNormalizada)
+}
+
 @Composable
 fun resolveDrawableId(nombre: String?): Int {
     val context = LocalContext.current
@@ -353,9 +436,14 @@ fun resolveDrawableId(nombre: String?): Int {
 }
 
 @Composable
-fun HabitacionCard(habitacion: Habitacion) {
+fun HabitacionCard(
+    habitacion: Habitacion,
+    onClick: () -> Unit
+) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(25.dp),
         colors = CardDefaults.cardColors(Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 5.dp)
@@ -371,12 +459,9 @@ fun HabitacionCard(habitacion: Habitacion) {
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                val drawableId = resolveDrawableId(habitacion.imagen_habitacion)
-
-                if (drawableId != 0) {
-                    // Imagen local empaquetada en res/drawable/
-                    Image(
-                        painter = painterResource(id = drawableId),
+                if (!habitacion.imagen_habitacion.isNullOrBlank()) {
+                    AsyncImage(
+                        model = habitacion.imagen_habitacion,
                         contentDescription = habitacion.nombre_habitacion,
                         modifier = Modifier
                             .fillMaxSize()
@@ -384,7 +469,6 @@ fun HabitacionCard(habitacion: Habitacion) {
                         contentScale = ContentScale.Crop
                     )
                 } else {
-                    // Ícono de respaldo si no hay imagen o no se encontró el recurso
                     Icon(
                         imageVector = Icons.Default.Hotel,
                         contentDescription = null,
