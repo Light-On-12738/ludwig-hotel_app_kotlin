@@ -29,3 +29,4 @@ val supabase = SupabaseClientProvider.client
 Para los modelos de base de datos, usar @Serializable.
 Antes de consultar, habilitar Data API para las tablas y crear políticas RLS
 en el panel de Supabase. Nunca usar una clave service_role en Android.
+
