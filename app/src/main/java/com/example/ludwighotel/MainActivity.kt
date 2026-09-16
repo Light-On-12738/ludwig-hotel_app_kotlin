@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,9 +20,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -127,50 +131,6 @@ fun LudwigHotelApp(viewModel: HotelViewModel = viewModel()) {
                         Header(onMenuClick = { isMenuOpen = true })
                     }
                     item { SearchBar() }
-
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            listOf("Habitaciones", "Catálogo", "Reservas")
-                                .forEachIndexed { index, title ->
-                                    TextButton(
-                                        onClick = { selectedTab = index }
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally
-                                        ) {
-                                            Text(
-                                                text = title,
-                                                color = if (selectedTab == index)
-                                                    Color(0xFFFFA000)
-                                                else
-                                                    Color.DarkGray,
-                                                fontSize = 17.sp,
-                                                fontWeight = if (selectedTab == index)
-                                                    FontWeight.Bold
-                                                else
-                                                    FontWeight.Normal
-                                            )
-
-                                            if (selectedTab == index) {
-                                                Spacer(Modifier.height(4.dp))
-                                                Box(
-                                                    modifier = Modifier
-                                                        .width(42.dp)
-                                                        .height(3.dp)
-                                                        .background(
-                                                            Color(0xFFFFA000),
-                                                            RoundedCornerShape(3.dp)
-                                                        )
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                        }
-                    }
 
                     if (selectedTab == 0) {
                         items(habitaciones) { habitacion ->
@@ -378,6 +338,20 @@ fun SearchBar() {
     )
 }
 
+/**
+ * Resuelve el nombre guardado en la base de datos (columna imagen_habitacion,
+ * SIN extensión, ej. "habitacion_deluxe") al ID interno del recurso drawable
+ * empaquetado en la app. Si no encuentra nada, retorna 0.
+ */
+@Composable
+fun resolveDrawableId(nombre: String?): Int {
+    val context = LocalContext.current
+    if (nombre.isNullOrBlank()) return 0
+    val id = context.resources.getIdentifier(nombre, "drawable", context.packageName)
+    android.util.Log.d("LudwigHotel", "Buscando drawable '$nombre' -> ID encontrado: $id")
+    return id
+}
+
 @Composable
 fun HabitacionCard(habitacion: Habitacion) {
     Card(
@@ -397,12 +371,27 @@ fun HabitacionCard(habitacion: Habitacion) {
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Hotel,
-                    contentDescription = null,
-                    modifier = Modifier.size(70.dp),
-                    tint = Color(0xFFB07842)
-                )
+                val drawableId = resolveDrawableId(habitacion.imagen_habitacion)
+
+                if (drawableId != 0) {
+                    // Imagen local empaquetada en res/drawable/
+                    Image(
+                        painter = painterResource(id = drawableId),
+                        contentDescription = habitacion.nombre_habitacion,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(20.dp)),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    // Ícono de respaldo si no hay imagen o no se encontró el recurso
+                    Icon(
+                        imageVector = Icons.Default.Hotel,
+                        contentDescription = null,
+                        modifier = Modifier.size(70.dp),
+                        tint = Color(0xFFB07842)
+                    )
+                }
             }
 
             Spacer(Modifier.height(15.dp))
