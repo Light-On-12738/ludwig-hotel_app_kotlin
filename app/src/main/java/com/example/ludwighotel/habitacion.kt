@@ -1,6 +1,7 @@
 package com.example.ludwighotel
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -28,9 +29,11 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import java.time.LocalDate
 
 @Serializable
 data class ImagenHabitacion(
@@ -42,6 +45,23 @@ data class ImagenHabitacion(
 @Serializable
 data class Resena(
     val id_resena: String,
+    val id_habitacion: String,
+    val id_usuario: String,
+    val comentario: String? = null,
+    val puntuacion: Int
+)
+
+@Serializable
+private data class ReservaElegibilidad(
+    val id_reserva: String,
+    val fecha_check_out: String
+)
+
+@Serializable
+private data class ResenaExistente(val id_resena: String)
+
+@Serializable
+private data class NuevaResena(
     val id_habitacion: String,
     val id_usuario: String,
     val comentario: String? = null,
@@ -76,6 +96,29 @@ class HabitacionDetalleRepository {
             }
             .decodeList<Resena>()
     }
+
+    suspend fun usuarioPuedeResenar(idUsuario: String, idHabitacion: String): Boolean =
+        SupabaseClientProvider.client.from("reserva").select {
+            filter {
+                eq("id_usuario", idUsuario)
+                eq("id_habitacion", idHabitacion)
+                lte("fecha_check_out", LocalDate.now().toString())
+            }
+        }.decodeList<ReservaElegibilidad>().isNotEmpty()
+
+    suspend fun usuarioYaReseno(idUsuario: String, idHabitacion: String): Boolean =
+        SupabaseClientProvider.client.from("resenas").select {
+            filter {
+                eq("id_usuario", idUsuario)
+                eq("id_habitacion", idHabitacion)
+            }
+        }.decodeList<ResenaExistente>().isNotEmpty()
+
+    suspend fun crearResena(idHabitacion: String, idUsuario: String, comentario: String?, puntuacion: Int) {
+        SupabaseClientProvider.client.from("resenas").insert(
+            NuevaResena(idHabitacion, idUsuario, comentario, puntuacion)
+        )
+    }
 }
 
 class HabitacionDetalleViewModel(
@@ -99,6 +142,13 @@ class HabitacionDetalleViewModel(
     var isLoading by mutableStateOf(true)
         private set
 
+    var puedeResenar by mutableStateOf(false)
+        private set
+    var yaReseno by mutableStateOf(false)
+        private set
+    var enviandoResena by mutableStateOf(false)
+        private set
+
     init {
         viewModelScope.launch {
             isLoading = true
@@ -118,15 +168,42 @@ class HabitacionDetalleViewModel(
             }
             imagenes = rutas
 
-            val resenas = repo.obtenerResenasPorHabitacion(habitacionId)
-            totalResenas = resenas.size
-            promedioEstrellas = if (resenas.isNotEmpty()) {
-                resenas.sumOf { it.puntuacion }.toDouble() / resenas.size
-            } else {
-                0.0
+            actualizarResenas()
+
+            SupabaseClientProvider.client.auth.currentUserOrNull()?.id?.let { usuarioId ->
+                yaReseno = repo.usuarioYaReseno(usuarioId, habitacionId)
+                puedeResenar = repo.usuarioPuedeResenar(usuarioId, habitacionId) && !yaReseno
             }
 
             isLoading = false
+        }
+    }
+
+    private suspend fun actualizarResenas() {
+        val resenas = repo.obtenerResenasPorHabitacion(habitacionId)
+        totalResenas = resenas.size
+        promedioEstrellas = if (resenas.isNotEmpty()) resenas.sumOf { it.puntuacion }.toDouble() / resenas.size else 0.0
+    }
+
+    fun enviarResena(puntuacion: Int, comentario: String, onResultado: (Boolean) -> Unit) {
+        val usuarioId = SupabaseClientProvider.client.auth.currentUserOrNull()?.id
+        if (usuarioId == null || !puedeResenar || yaReseno) {
+            onResultado(false)
+            return
+        }
+        viewModelScope.launch {
+            enviandoResena = true
+            try {
+                repo.crearResena(habitacionId, usuarioId, comentario.trim().ifBlank { null }, puntuacion.coerceIn(1, 5))
+                actualizarResenas()
+                yaReseno = true
+                puedeResenar = false
+                onResultado(true)
+            } catch (_: Exception) {
+                onResultado(false)
+            } finally {
+                enviandoResena = false
+            }
         }
     }
 }
@@ -179,6 +256,10 @@ fun HabitacionDetalleScreen(
                         imagenes = viewModel.imagenes,
                         promedioEstrellas = viewModel.promedioEstrellas,
                         totalResenas = viewModel.totalResenas,
+                        puedeResenar = viewModel.puedeResenar,
+                        yaReseno = viewModel.yaReseno,
+                        enviandoResena = viewModel.enviandoResena,
+                        onEnviarResena = viewModel::enviarResena,
                         onBack = onBack,
                         onReserve = onReserve
                     )
@@ -194,6 +275,10 @@ private fun HabitacionDetalleContenido(
     imagenes: List<String>,
     promedioEstrellas: Double,
     totalResenas: Int,
+    puedeResenar: Boolean,
+    yaReseno: Boolean,
+    enviandoResena: Boolean,
+    onEnviarResena: (Int, String, (Boolean) -> Unit) -> Unit,
     onBack: () -> Unit,
     onReserve: (Habitacion) -> Unit
 ) {
@@ -303,6 +388,15 @@ private fun HabitacionDetalleContenido(
 
                 CalificacionPromedio(promedio = promedioEstrellas, total = totalResenas)
 
+                Spacer(Modifier.height(12.dp))
+
+                EscribirResenaSeccion(
+                    puedeResenar = puedeResenar,
+                    yaReseno = yaReseno,
+                    enviando = enviandoResena,
+                    onEnviar = onEnviarResena
+                )
+
                 Spacer(Modifier.height(14.dp))
 
                 Row(
@@ -374,6 +468,51 @@ private fun CalificacionPromedio(promedio: Double, total: Int) {
             Text("Sin reseñas todavía", color = Color.Gray, fontSize = 13.sp)
         }
     }
+}
+
+@Composable
+private fun EscribirResenaSeccion(
+    puedeResenar: Boolean, yaReseno: Boolean, enviando: Boolean,
+    onEnviar: (Int, String, (Boolean) -> Unit) -> Unit
+) {
+    var mostrarDialogo by remember { mutableStateOf(false) }
+    if (puedeResenar) {
+        OutlinedButton(
+            onClick = { mostrarDialogo = true }, modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, Color(0xFFFFA000)),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFFA000))
+        ) {
+            Icon(Icons.Default.RateReview, null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp)); Text("Escribir una reseña")
+        }
+    } else Text(
+        if (yaReseno) "Ya dejaste una reseña para esta habitación. ¡Gracias!"
+        else "Podrás dejar una reseña una vez que finalice tu estancia en esta habitación.",
+        color = Color.Gray, fontSize = 12.sp
+    )
+    if (mostrarDialogo) NuevaResenaDialog(
+        enviando, { mostrarDialogo = false },
+        { puntuacion, comentario -> onEnviar(puntuacion, comentario) { if (it) mostrarDialogo = false } }
+    )
+}
+
+@Composable
+private fun NuevaResenaDialog(enviando: Boolean, onDismiss: () -> Unit, onConfirmar: (Int, String) -> Unit) {
+    var puntuacion by remember { mutableStateOf(5) }
+    var comentario by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = { if (!enviando) onDismiss() }, title = { Text("Escribir reseña") },
+        text = { Column {
+            Row { repeat(5) { index -> IconButton(onClick = { puntuacion = index + 1 }, enabled = !enviando) {
+                Icon(if (index < puntuacion) Icons.Default.Star else Icons.Default.StarBorder, "${index + 1} estrellas", tint = Color(0xFFFFA000))
+            } } }
+            OutlinedTextField(value = comentario, onValueChange = { comentario = it.take(500) },
+                placeholder = { Text("Cuéntanos tu experiencia (opcional)") }, modifier = Modifier.fillMaxWidth(), enabled = !enviando, minLines = 3)
+        } },
+        confirmButton = { Button(onClick = { onConfirmar(puntuacion, comentario) }, enabled = !enviando,
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFA000))) { Text(if (enviando) "Enviando..." else "Publicar") } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !enviando) { Text("Cancelar") } }
+    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)

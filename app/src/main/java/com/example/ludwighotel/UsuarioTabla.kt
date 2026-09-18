@@ -4,7 +4,6 @@ import io.github.jan.supabase.postgrest.from
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** Perfil público de un usuario. La contraseña vive solamente en Supabase Auth. */
 @Serializable
 data class UsuarioTabla(
     @SerialName("id_usuario") val id: String,
@@ -15,7 +14,6 @@ data class UsuarioTabla(
     @SerialName("dui") val dui: String
 )
 
-/** Recupera únicamente el perfil del usuario que ya inició sesión. */
 suspend fun obtenerUsuarioPorId(id: String): UsuarioTabla? = try {
     SupabaseClientProvider.client
         .from("usuario")
@@ -27,10 +25,6 @@ suspend fun obtenerUsuarioPorId(id: String): UsuarioTabla? = try {
     null
 }
 
-/**
- * Respaldo para cuando no hay sesión de Supabase Auth disponible (por ejemplo
- * si el login se resolvió consultando directamente la tabla "usuario").
- */
 suspend fun obtenerUsuarioPorCorreo(correo: String): UsuarioTabla? = try {
     SupabaseClientProvider.client
         .from("usuario")
@@ -42,7 +36,6 @@ suspend fun obtenerUsuarioPorCorreo(correo: String): UsuarioTabla? = try {
     null
 }
 
-/** Campos editables por el propio usuario desde la pantalla de Perfil. */
 @Serializable
 private data class UsuarioActualizacion(
     @SerialName("nombre_completo") val nombreCompleto: String,
@@ -50,10 +43,6 @@ private data class UsuarioActualizacion(
     @SerialName("dui") val dui: String
 )
 
-/**
- * Actualiza el perfil del usuario autenticado en la tabla "usuario".
- * No permite modificar id_usuario, correo_electronico ni rol.
- */
 suspend fun actualizarUsuario(
     id: String,
     nombreCompleto: String,
@@ -88,7 +77,6 @@ fun formatearTelefono(entrada: String): String {
     return if (digitos.length <= 4) digitos else "${digitos.take(4)}-${digitos.drop(4)}"
 }
 
-/** Solo letras (incluye tildes), espacios, apóstrofes y guiones para nombres. */
 fun formatearNombre(entrada: String): String = entrada
     .filter { it.isLetter() || it == ' ' || it == '-' || it == '\'' }
     .replace(Regex("\\s+"), " ")
@@ -97,7 +85,6 @@ fun formatearNombre(entrada: String): String = entrada
 fun nombreEsValido(nombre: String): Boolean =
     Regex("^[\\p{L}][\\p{L} '\\-]{1,79}$").matches(nombre.trim())
 
-/** El correo no admite espacios y se guarda en minúsculas. */
 fun normalizarCorreo(entrada: String): String =
     entrada.filterNot(Char::isWhitespace).lowercase().take(254)
 

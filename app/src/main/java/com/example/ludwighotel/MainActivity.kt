@@ -32,6 +32,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
@@ -331,7 +335,8 @@ class MainActivity : ComponentActivity() {
                                 name = habitacion.nombre_habitacion,
                                 pricePerNight = habitacion.precio_noche,
                                 description = habitacion.descripcion,
-                                imageUrl = habitacion.imagen_habitacion
+                                imageUrl = habitacion.imagen_habitacion,
+                                maxGuests = habitacion.capacidad_huespedes
                             )
 
                             navController.navigate("reserva")
@@ -385,7 +390,9 @@ class MainActivity : ComponentActivity() {
                 composable("mis_reservas") {
                     MisReservasScreen(
                         onBack = { navController.popBackStack() },
-                        onNewReservation = { navController.popBackStack() },
+                        onNewReservation = {
+                            navController.popBackStack("hotel/{userEmail}", inclusive = false)
+                        },
                         onReservationDetails = { reservaId ->
                             navController.navigate("detalle_reserva/$reservaId")
                         }
@@ -2027,8 +2034,8 @@ private fun EditarPerfilDialog(
             ) {
 
                 OutlinedTextField(
-                    value = nombre,
-                    onValueChange = { nombre = formatearNombre(it) },
+                    value = TextFieldValue(nombre, TextRange(nombre.length)),
+                    onValueChange = { nombre = formatearNombre(it.text) },
                     label = { Text("Nombre completo") },
                     isError = !nombreValido,
                     singleLine = true,
@@ -2037,22 +2044,24 @@ private fun EditarPerfilDialog(
                 )
 
                 OutlinedTextField(
-                    value = telefono,
-                    onValueChange = { telefono = formatearTelefono(it) },
+                    value = TextFieldValue(telefono, TextRange(telefono.length)),
+                    onValueChange = { telefono = formatearTelefono(it.text) },
                     label = { Text("Teléfono (0000-0000)") },
                     isError = !telefonoValido,
                     singleLine = true,
                     enabled = !guardando,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 OutlinedTextField(
-                    value = dui,
-                    onValueChange = { dui = formatearDui(it) },
+                    value = TextFieldValue(dui, TextRange(dui.length)),
+                    onValueChange = { dui = formatearDui(it.text) },
                     label = { Text("DUI (00000000-0)") },
                     isError = !duiValido,
                     singleLine = true,
                     enabled = !guardando,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
                 )
 

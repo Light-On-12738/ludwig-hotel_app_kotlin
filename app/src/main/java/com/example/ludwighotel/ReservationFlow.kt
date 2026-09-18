@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -52,6 +53,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.jan.supabase.postgrest.postgrest
@@ -80,13 +84,13 @@ private val FieldBorder = Color(0xFFE6E6E6)
 private val TextPrimary = Color(0xFF172033)
 private val TextSecondary = Color(0xFF6B7280)
 
-/** Datos mínimos que la pantalla necesita de una habitación. */
 data class RoomForReservation(
-    val id: String, // UUID de la tabla habitaciones en Supabase
+    val id: String,
     val name: String,
     val pricePerNight: Double,
     val description: String = "",
-    val imageUrl: String? = null
+    val imageUrl: String? = null,
+    val maxGuests: Int = 1
 )
 
 @Serializable
@@ -103,11 +107,6 @@ private data class GuestData(
 )
 
 private class ReservationRepository {
-    /**
-     * Devuelve reservas que se cruzan con el rango de calendario solicitado.
-     * La fecha de salida queda libre: una estancia que sale el 10 permite
-     * que otra entre el 10.
-     */
     suspend fun occupiedRanges(roomId: String, from: LocalDate, until: LocalDate): List<ClosedRange<LocalDate>> =
         withContext(Dispatchers.IO) {
             SupabaseClientProvider.client.postgrest
@@ -123,10 +122,6 @@ private class ReservationRepository {
                 .map { LocalDate.parse(it.checkIn)..LocalDate.parse(it.checkOut).minusDays(1) }
         }
 
-    /**
-     * El RPC de SQL hace la comprobación final y el INSERT en una operación
-     * atómica. Nunca almacenar CVV ni el número completo de tarjeta.
-     */
     suspend fun createReservation(
         roomId: String,
         userId: String,
@@ -156,10 +151,6 @@ private class ReservationRepository {
     }
 }
 
-/**
- * Pantalla completa de reserva. Llamarla desde el botón "Reservar habitación".
- * userId debe ser el id de Supabase Auth del usuario autenticado.
- */
 @Composable
 fun ReservationFlowScreen(
     room: RoomForReservation,
@@ -218,7 +209,9 @@ fun ReservationFlowScreen(
                     onPreviousMonth = {
                         if (month.isAfter(YearMonth.now())) month = month.minusMonths(1)
                     },
-                    onNextMonth = { month = month.plusMonths(1) },
+                    onNextMonth = {
+                        if (month.year < YearMonth.now().year + 1) month = month.plusMonths(1)
+                    },
                     checkIn = checkIn,
                     checkOut = checkOut,
                     occupied = occupied,
@@ -233,7 +226,7 @@ fun ReservationFlowScreen(
                             day <= checkIn -> checkIn = day
                             hasOccupiedDate(checkIn!!, day, occupied) ->
                                 error = "Ese rango incluye días ya ocupados."
-                            else -> checkOut = day.plusDays(1)
+                            else -> checkOut = day
                         }
                     }
                 )
@@ -255,7 +248,7 @@ fun ReservationFlowScreen(
         item {
             val enabled = when (step) {
                 1 -> duiReservaEsValido(guest.document) && nombreEsValido(guest.firstName) &&
-                    nombreEsValido(guest.lastName) && (guest.guests.toIntOrNull() ?: 0) > 0
+                    nombreEsValido(guest.lastName) && (guest.guests.toIntOrNull() ?: 0) in 1..room.maxGuests
                 2 -> checkIn != null && checkOut != null
                 else -> cardNumber.length in 12..16 && vencimientoEsValido(expiry) && cvv.length in 3..4
             } && !submitting
@@ -268,8 +261,6 @@ fun ReservationFlowScreen(
                         step++
                     } else {
                         submitting = true
-                        // La función SQL vuelve a validar el cruce por seguridad.
-                        // Si otra persona reservó antes, mostrará un error y no insertará nada.
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(54.dp),
@@ -290,8 +281,6 @@ fun ReservationFlowScreen(
         }
     }
 
-    // El bloque de confirmación se mantiene fuera del onClick para poder llamar
-    // a suspend functions desde un scope de Compose sin guardar datos de tarjeta.
     if (submitting) {
         LaunchedEffect(Unit) {
             runCatching {
@@ -306,8 +295,6 @@ fun ReservationFlowScreen(
                     cardLast4 = cardNumber.takeLast(4)
                 )
             }.onSuccess {
-                // El audio se reproduce solo después de que Supabase confirma
-                // que la reserva se insertó correctamente.
                 MediaPlayer.create(context, R.raw.reserva_confirmada)?.apply {
                     setOnCompletionListener { player -> player.release() }
                     start()
@@ -316,8 +303,6 @@ fun ReservationFlowScreen(
             }
                 .onFailure { exception ->
                     submitting = false
-                    // No se muestra exception.message: puede incluir cabeceras y el
-                    // token de sesión. Se entrega un mensaje útil y seguro.
                     val safeError = exception.message
                         .orEmpty()
                         .substringBefore("URL:")
@@ -416,11 +401,19 @@ private fun GuestStep(room: RoomForReservation, value: GuestData, onChange: (Gue
                 "DUI (00000000-0)",
                 value.document,
                 { onChange(value.copy(document = formatearDuiReserva(it))) },
-                Icons.Default.Badge
+                Icons.Default.Badge,
+                keyboardType = KeyboardType.Number
             )
             ReservationField("Nombre", value.firstName, { onChange(value.copy(firstName = formatearNombre(it))) }, Icons.Default.Person)
             ReservationField("Apellido", value.lastName, { onChange(value.copy(lastName = formatearNombre(it))) }, Icons.Default.Person)
-            ReservationField("Número de huéspedes", value.guests, { onChange(value.copy(guests = it.filter(Char::isDigit))) }, Icons.Default.Group)
+            ReservationField("Número de huéspedes (máximo ${room.maxGuests})", value.guests, { text ->
+                val cantidad = text.filter(Char::isDigit).toIntOrNull()
+                onChange(value.copy(guests = when {
+                    cantidad == null -> ""
+                    cantidad > room.maxGuests -> room.maxGuests.toString()
+                    else -> cantidad.toString()
+                }))
+            }, Icons.Default.Group, keyboardType = KeyboardType.Number)
         }
     }
 }
@@ -438,8 +431,13 @@ private fun CalendarStep(
 ) {
     Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Elige los días a reservar", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-        Text("Rojo: ocupado · Verde: tu estancia", fontSize = 12.sp, color = Color.Gray)
+        Text("Elige tu fecha de entrada y salida", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+        Text(
+            "Primero toca el día de entrada y después el día de salida. Ambos quedarán en verde.",
+            fontSize = 12.sp,
+            color = Color.Gray
+        )
+        Text("Rojo: ocupado · Verde: fechas seleccionadas", fontSize = 12.sp, color = Color.Gray)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text(
                 "‹",
@@ -448,7 +446,11 @@ private fun CalendarStep(
                 modifier = Modifier.clickable(enabled = month.isAfter(YearMonth.now()), onClick = onPreviousMonth)
             )
             Text(month.month.getDisplayName(TextStyle.FULL, Locale("es")).replaceFirstChar { it.uppercase() } + " ${month.year}", fontWeight = FontWeight.Bold)
-            Text("›", fontSize = 28.sp, modifier = Modifier.clickable(onClick = onNextMonth))
+            Text(
+                "›", fontSize = 28.sp,
+                color = if (month.year < YearMonth.now().year + 1) TextPrimary else Color.Transparent,
+                modifier = Modifier.clickable(enabled = month.year < YearMonth.now().year + 1, onClick = onNextMonth)
+            )
         }
         if (loading) Text("Consultando disponibilidad…") else MonthGrid(month, checkIn, checkOut, occupied, onDaySelected)
     }
@@ -463,7 +465,7 @@ private fun MonthGrid(
     occupied: List<ClosedRange<LocalDate>>,
     onDaySelected: (LocalDate) -> Unit
 ) {
-    val firstOffset = month.atDay(1).dayOfWeek.value % 7 // domingo primero
+    val firstOffset = month.atDay(1).dayOfWeek.value % 7
     val cells = List(firstOffset) { null } + (1..month.lengthOfMonth()).map(month::atDay)
     val labels = listOf("Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb")
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -477,7 +479,10 @@ private fun MonthGrid(
                     else {
                         val occupiedDay = isOccupied(date, occupied)
                         val unavailable = occupiedDay
-                        val selected = checkIn != null && ((checkOut == null && date == checkIn) || (checkOut != null && !date.isBefore(checkIn) && date.isBefore(checkOut)))
+                        val selected = checkIn != null && (
+                            (checkOut == null && date == checkIn) ||
+                                (checkOut != null && !date.isBefore(checkIn) && !date.isAfter(checkOut))
+                            )
                         val color = when {
                             occupiedDay -> OccupiedRed
                             selected -> SelectedGreen
@@ -531,15 +536,14 @@ private fun PaymentStep(
                 Text("${paymentMethod.uppercase()} · ${if (expiry.isBlank()) "MM/AA" else expiry}", color = Color.White, fontSize = 12.sp)
             }
         }
-        ReservationField("Número de tarjeta", cardNumber, onCardNumberChange, Icons.Default.CreditCard, password = true)
-        ReservationField("Fecha de vencimiento (MM/AA)", expiry, onExpiryChange, Icons.Default.CalendarMonth)
-        ReservationField("CVV / CVC", cvv, onCvvChange, Icons.Default.CreditCard, password = true)
+        ReservationField("Número de tarjeta", cardNumber, onCardNumberChange, Icons.Default.CreditCard, password = true, keyboardType = KeyboardType.Number)
+        ReservationField("Fecha de vencimiento (MM/AA)", expiry, onExpiryChange, Icons.Default.CalendarMonth, keyboardType = KeyboardType.Number)
+        ReservationField("CVV / CVC", cvv, onCvvChange, Icons.Default.CreditCard, password = true, keyboardType = KeyboardType.NumberPassword)
         Text("Demostración: la app nunca guarda CVV ni el número completo de tarjeta.", fontSize = 12.sp, color = Color.Gray)
     }
     }
 }
 
-/** Muestra una única imagen de la habitación en el primer paso. */
 @Composable
 private fun RoomReservationImage(room: RoomForReservation) {
     if (!room.imageUrl.isNullOrBlank()) {
@@ -571,25 +575,33 @@ private fun reservationFieldColors() = OutlinedTextFieldDefaults.colors(
 )
 
 @Composable
-private fun ReservationField(label: String, value: String, onValueChange: (String) -> Unit, icon: ImageVector, password: Boolean = false) {
+private fun ReservationField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    icon: ImageVector,
+    password: Boolean = false,
+    keyboardType: KeyboardType = KeyboardType.Text
+) {
     OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
+        value = TextFieldValue(value, TextRange(value.length)),
+        onValueChange = { onValueChange(it.text) },
         label = { Text(label) },
         leadingIcon = { androidx.compose.material3.Icon(icon, null, tint = Color.Gray) },
         visualTransformation = if (password) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
         shape = RoundedCornerShape(12.dp),
         colors = reservationFieldColors(),
         modifier = Modifier.fillMaxWidth(),
-        singleLine = true
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType)
     )
 }
 
 @Composable
 private fun Field(label: String, value: String, onValueChange: (String) -> Unit, password: Boolean = false) {
     OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
+        value = TextFieldValue(value, TextRange(value.length)),
+        onValueChange = { onValueChange(it.text) },
         label = { Text(label) },
         visualTransformation = if (password) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
         colors = reservationFieldColors(),
@@ -609,7 +621,6 @@ private fun hasOccupiedDate(start: LocalDate, end: LocalDate, ranges: List<Close
     return false
 }
 
-/** Convierte hasta 9 dígitos al formato requerido por usuario.dui: 00000000-0. */
 private fun formatearDuiReserva(input: String): String {
     val digits = input.filter(Char::isDigit).take(9)
     return if (digits.length <= 8) digits else "${digits.take(8)}-${digits.last()}"
@@ -618,7 +629,6 @@ private fun formatearDuiReserva(input: String): String {
 private fun duiReservaEsValido(value: String): Boolean =
     Regex("^\\d{8}-\\d$").matches(value)
 
-/** Convierte números a MM/AA y rechaza meses inexistentes. */
 private fun formatearVencimiento(input: String): String {
     val digits = input.filter(Char::isDigit).take(4)
     return if (digits.length <= 2) digits else "${digits.take(2)}/${digits.drop(2)}"

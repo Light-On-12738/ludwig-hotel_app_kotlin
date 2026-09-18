@@ -5,6 +5,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,11 +26,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,30 +51,6 @@ val LudwigLightGray = Color(0xFFF2F2F2)
 val LudwigTextGray = Color(0xFF757575)
 val LudwigButtonBlack = Color(0xFF1E1E1E)
 
-/**
- * Guarda si el usuario marcó "Recordarme" en el login.
- *
- * Supabase-kt ya persiste la sesión (access/refresh token) en disco por
- * defecto, así que al cerrar y volver a abrir la app la sesión se
- * restaura sola. Esta preferencia es lo que decide si esa restauración
- * automática debe respetarse (Recordarme = true) o si, por el contrario,
- * la sesión guardada debe cerrarse al iniciar la app porque el usuario
- * NO pidió que lo recordáramos (Recordarme = false).
- *
- * IMPORTANTE: para que "Recordarme" funcione de verdad, en el arranque
- * de la app (por ejemplo al inicio de MainActivity, antes de decidir si
- * navegar a Home o a Login) hay que hacer:
- *
- *   if (!SessionPreferences.shouldRememberSession(context)) {
- *       SupabaseClientProvider.client.auth.signOut()
- *   }
- *
- * Así, si el usuario no marcó Recordarme, la sesión persistida se
- * invalida en cuanto la app vuelve a abrirse, y se le pedirá iniciar
- * sesión de nuevo. Si sí la marcó, no se toca nada y la sesión
- * persistente de Supabase sigue viva hasta que el usuario cierre sesión
- * manualmente.
- */
 object SessionPreferences {
     private const val PREFS_NAME = "ludwig_hotel_session_prefs"
     private const val KEY_REMEMBER_ME = "remember_me"
@@ -233,8 +213,6 @@ fun LoginScreen(
                                             Toast.LENGTH_LONG
                                         ).show()
                                     } else {
-                                        // Guarda si el usuario quiere que la sesión persista
-                                        // más allá de cerrar la app (ver SessionPreferences).
                                         SessionPreferences.setRememberMe(context, rememberMe)
                                         Toast.makeText(context, "¡Bienvenido!", Toast.LENGTH_SHORT).show()
                                         onLoginSuccess(user.id)
@@ -880,21 +858,12 @@ fun LudwigHeader() {
             color = LudwigOrange,
             fontWeight = FontWeight.Bold
         )
-        Spacer(modifier = Modifier.width(6.dp))
-        Surface(
-            modifier = Modifier.size(36.dp),
-            color = LudwigOrange,
-            shape = RoundedCornerShape(8.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = "LH",
-                    color = Color.White,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 18.sp
-                )
-            }
-        }
+        Spacer(modifier = Modifier.width(10.dp))
+        Image(
+            painter = painterResource(id = R.drawable.milogo),
+            contentDescription = "Logo de Ludwing Hotel",
+            modifier = Modifier.size(38.dp)
+        )
     }
 
     Text(
@@ -983,8 +952,8 @@ fun LudwigTextField(
     keyboardOptions: KeyboardOptions
 ) {
     OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
+        value = TextFieldValue(value, TextRange(value.length)),
+        onValueChange = { onValueChange(it.text) },
         modifier = Modifier.fillMaxWidth(),
         placeholder = { Text(text = placeholder, color = LudwigTextGray, fontSize = 14.sp) },
         leadingIcon = { Icon(imageVector = leadingIcon, contentDescription = null, tint = LudwigTextGray) },
