@@ -1,5 +1,6 @@
 package com.example.ludwighotel
 
+import android.media.MediaPlayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
@@ -47,6 +48,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -166,6 +168,7 @@ fun ReservationFlowScreen(
     onReservationCreated: () -> Unit
 ) {
     val repository = remember { ReservationRepository() }
+    val context = LocalContext.current
     var step by remember { mutableIntStateOf(1) }
     var guest by remember { mutableStateOf(GuestData()) }
     var month by remember { mutableStateOf(YearMonth.now()) }
@@ -302,7 +305,15 @@ fun ReservationFlowScreen(
                     paymentMethod = paymentMethod,
                     cardLast4 = cardNumber.takeLast(4)
                 )
-            }.onSuccess { onReservationCreated() }
+            }.onSuccess {
+                // El audio se reproduce solo después de que Supabase confirma
+                // que la reserva se insertó correctamente.
+                MediaPlayer.create(context, R.raw.reserva_confirmada)?.apply {
+                    setOnCompletionListener { player -> player.release() }
+                    start()
+                }
+                onReservationCreated()
+            }
                 .onFailure { exception ->
                     submitting = false
                     // No se muestra exception.message: puede incluir cabeceras y el
