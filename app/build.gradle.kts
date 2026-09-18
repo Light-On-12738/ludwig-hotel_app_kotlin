@@ -65,4 +65,7 @@ dependencies {
 
     // Compatibilidad Java para minSdk 24
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+
+    implementation("io.github.jan-tennert.supabase:functions-kt")
+    implementation("io.github.jan-tennert.supabase:functions-kt:3.1.4") // usa la misma versión del BOM/librería que ya tienes
 }
