@@ -524,7 +524,7 @@ private fun PaymentStep(
         }
         Card(colors = CardDefaults.cardColors(containerColor = HotelOrange), shape = RoundedCornerShape(18.dp)) {
             Column(Modifier.fillMaxWidth().padding(20.dp)) {
-                Text("LUDWIG HOTEL", color = Color.White, fontWeight = FontWeight.Bold)
+                Text("LUDWING HOTEL", color = Color.White, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(24.dp))
                 Text(if (cardNumber.isBlank()) "•••• •••• •••• ••••" else cardNumber.chunked(4).joinToString(" "), color = Color.White, fontSize = 20.sp)
                 Spacer(Modifier.height(12.dp))
